@@ -31,6 +31,7 @@ import { collection, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import PropertyMap from '../components/PropertyMap';
 import VoiceTextField from '../components/VoiceTextField';
+import { verifyPropertyImage } from '../utils/ai';
 
 const LandlordOnboarding = () => {
   const navigate = useNavigate();
@@ -39,6 +40,7 @@ const LandlordOnboarding = () => {
   
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [images, setImages] = useState([]);
   
   const fileInputRef = useRef(null);
@@ -94,15 +96,42 @@ const LandlordOnboarding = () => {
     }));
   };
 
-  const handleImageUpload = (e) => {
+  const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImages(prev => [...prev, reader.result]);
-      };
-      reader.readAsDataURL(file);
-    });
+    if (files.length === 0) return;
+
+    setIsVerifying(true);
+    let validCount = 0;
+    let invalidCount = 0;
+
+    for (const file of files) {
+      try {
+        const base64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.readAsDataURL(file);
+        });
+
+        // AI Verification
+        const isValid = await verifyPropertyImage(base64);
+
+        if (isValid) {
+          setImages(prev => [...prev, base64]);
+          validCount++;
+        } else {
+          invalidCount++;
+          showToast(`REJECTED: ${file.name} does not look like a property/room photo.`, 'error');
+        }
+      } catch (error) {
+        console.error("AI Error:", error);
+        showToast(`Verification error for ${file.name}`, 'warning');
+        // On technical error, we might want to allow it or block it. 
+        // User said "otherwise it should reject", so we block.
+      }
+    }
+
+    if (validCount > 0) showToast(`${validCount} photos verified and added.`, 'success');
+    setIsVerifying(false);
   };
 
   const removeImage = (index) => {
@@ -363,6 +392,15 @@ const LandlordOnboarding = () => {
               )}
             </Grid>
 
+            {isVerifying && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, p: 2, bgcolor: 'primary.50', borderRadius: 2 }}>
+                <CircularProgress size={20} />
+                <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                  AI is verifying your photos...
+                </Typography>
+              </Box>
+            )}
+
             <Stack direction="row" spacing={2}>
               <Button
                 variant="outlined"
@@ -406,7 +444,7 @@ const LandlordOnboarding = () => {
               fullWidth
               variant="contained"
               onClick={() => setStep(2)}
-              disabled={images.length < 1}
+              disabled={images.length < 1 || isVerifying}
               sx={{
                 mt: 3,
                 py: 1.5,
