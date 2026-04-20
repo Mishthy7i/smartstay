@@ -1,8 +1,4 @@
 firebase_key.json
-# Frontend
-frontend/node_modules/
-frontend/dist/
-
-# General
-node_modules/
+pwa/node_modules/
+pwa/dist/
 .env
