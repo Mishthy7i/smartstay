@@ -1,15 +1,20 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Initialize Gemini with the API Key from environment variables
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(API_KEY);
-
 /**
  * Verifies if an image is a valid property/room photo using Gemini AI.
  * @param {string} base64String - The base64 data of the image.
  * @returns {Promise<boolean>} - True if valid, false otherwise.
  */
 export const verifyPropertyImage = async (base64String) => {
+  // Fetch key inside call to ensure production env detection
+  const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+  if (!API_KEY || API_KEY === "undefined" || API_KEY.length < 10) {
+    console.error("AI Verify Error: VITE_GEMINI_API_KEY is not defined in the environment.");
+    throw new Error("AI Setup Incomplete: Please add VITE_GEMINI_API_KEY to your deployment environment variables.");
+  }
+
+  const genAI = new GoogleGenerativeAI(API_KEY);
   // Array of models to try in order of preference (2.5 Flash worked for you)
   const modelsToTry = [
     "gemini-2.5-flash", 
