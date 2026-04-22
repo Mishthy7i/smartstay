@@ -182,29 +182,50 @@ const StudentOnboarding = () => {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
-        try {
-          // Overpass API query for nearby colleges and universities
-          const query = `[out:json];node["amenity"~"college|university"](around:10000,${latitude},${longitude});out;`;
-          const response = await fetch(`https://overpass-api.de/api/interpreter`, {
-            method: 'POST',
-            body: query
-          });
-          const data = await response.json();
-          
-          if (data.elements && data.elements.length > 0) {
-            const colleges = data.elements.map(el => el.tags.name).filter(name => !!name);
-            // Remove duplicates and limit
-            setNearbyColleges([...new Set(colleges)].slice(0, 5));
-            showToast("Nearby colleges detected!", "success");
-          } else {
-            showToast("No colleges found nearby. Try manual entry.", "info");
+        const query = `[out:json];node["amenity"~"college|university"](around:10000,${latitude},${longitude});out;`;
+        
+        // Multiple mirrors for reliability and CORS compatibility
+        const endpoints = [
+          'https://overpass-api.de/api/interpreter',
+          'https://lz4.overpass-api.de/api/interpreter',
+          'https://overpass.kumi.systems/api/interpreter'
+        ];
+
+        let success = false;
+        for (const endpoint of endpoints) {
+          try {
+            console.log(`Attempting to detect colleges via ${endpoint}...`);
+            const response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`, {
+              method: 'GET',
+              mode: 'cors'
+            });
+
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            
+            const data = await response.json();
+            
+            if (data.elements && data.elements.length > 0) {
+              const colleges = data.elements.map(el => el.tags.name).filter(name => !!name);
+              setNearbyColleges([...new Set(colleges)].slice(0, 5));
+              showToast("Nearby colleges detected!", "success");
+              success = true;
+              break; // Stop once we have data
+            }
+          } catch (error) {
+            console.warn(`Mirror ${endpoint} failed:`, error.message);
+            // Continue to next mirror
           }
-        } catch (error) {
-          console.error("Error detecting colleges:", error);
-          showToast("Failed to detect colleges", "error");
-        } finally {
-          setDetectingLocation(false);
         }
+
+        if (!success) {
+          if (nearbyColleges.length === 0) {
+            showToast("No colleges found nearby. Try manual entry.", "info");
+          } else {
+            showToast("Failed to reach detection servers", "error");
+          }
+        }
+        
+        setDetectingLocation(false);
       },
       (error) => {
         console.error("Geolocation error:", error);
